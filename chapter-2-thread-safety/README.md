@@ -3,6 +3,7 @@
 * [What is thread safety?](#21-what-is-thread-safety)
     * [Example: a stateless servlet](#211-example-a-stateless-servlet)
 * [Atomicity](#22-atomicity)
+    * [Race condition](#221-race-condition)
 
 Threads and locks are just *methods* for achieving thread-safe code.
 
@@ -99,3 +100,34 @@ public class StatelessFactorizer implements Servlet {
 
 --- 
 
+Servlet that counts requests without the necessary synchronization.
+*Don’t do this*
+
+```java
+
+@NotThreadSafe
+public class UnsafeCountingFactorizer implements Servlet {
+    private long count = 0;
+
+    public long getCount() {
+        return count;
+    }
+
+    public void service(ServletRequest req, ServletResponse resp) {
+        BigInteger i = extractFromRequest(req);
+        BigInteger[] factors = factor(i);
+        ++count;
+        encodeIntoResponse(resp, factors);
+    }
+}
+```
+
+This is an example of a read-modify-write
+operation, in which the resulting state is derived from the previous state.
+
+The possibility of incorrect results in the presence of unlucky timing is so important
+in concurrent programming that it has a name: `a race condition`.
+
+### 2.2.1 Race condition
+
+---
