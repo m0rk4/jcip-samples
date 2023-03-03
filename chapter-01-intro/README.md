@@ -109,7 +109,7 @@ Earlier there was a limit of threads per process (~100) - multiplexing as soluti
 `I/O multiplexing refers to the concept of processing multiple input/output
 events from a single event loop, with system calls like poll and select (Unix).`
 
-Now the situation changed a little and it is available to run ***thousands*** of threads.
+Now the situation changed a little, and it is available to run ***thousands*** of threads.
 See NPTL threads (https://en.wikipedia.org/wiki/Native_POSIX_Thread_Library).
 
 ### 1.2.4 Responsive GUI apps
@@ -210,7 +210,7 @@ Some examples:
 
 ---
 
-Even though multithreaded apps can improve permormance, the incorrect usage can severely decrease it.
+Even though multithreaded apps can improve performance, the incorrect usage can severely decrease it.
 For example with `context switches` (save/restore execution context frequently? = $$).
 
 ## 1.4 Threads are everywhere
