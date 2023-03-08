@@ -7,6 +7,9 @@
     * [Example: race conditions in lazy initialization](#222-example-race-conditions-in-lazy-initialization)
     * [Compound actions](#223-compound-actions)
 * [Locking](#23-locking)
+    * [Intrinsic locks](#231-intrinsic-locks)
+    * [Reentrancy](#232-reentrancy)
+* [Guarding state with locks](#24-guarding-state-with-locks)
 
 Threads and locks are just *methods* for achieving thread-safe code.
 
@@ -208,3 +211,135 @@ arbitrary state variables, and this makes it easier to maintain and verify
 thread safety.`
 
 ## 2.3 Locking
+
+---
+
+```java
+
+@NotThreadSafe
+public class UnsafeCachingFactorizer implements Servlet {
+    private final AtomicReference<BigInteger> lastNumber
+            = new AtomicReference<BigInteger>();
+    private final AtomicReference<BigInteger[]> lastFactors
+            = new AtomicReference<BigInteger[]>();
+
+    public void service(ServletRequest req, ServletResponse resp) {
+        BigInteger i = extractFromRequest(req);
+        if (i.equals(lastNumber.get()))
+            encodeIntoResponse(resp, lastFactors.get());
+        else {
+            BigInteger[] factors = factor(i);
+            lastNumber.set(i);
+            lastFactors.set(factors);
+            encodeIntoResponse(resp, factors);
+        }
+    }
+}
+```
+
+Even though individual pieces of state are thread-safe (2 atomic references),
+the servlet still has race conditions that could make it produce the wrong answer.
+
+As we know from earlier chapters thread safety requires that invariants be preserved
+regardless of timing or interleaving of operations in multiple threads.
+*Invariant:* `lastNumber = product(lastFactors)`.
+
+So, when multiple variables participate in the invariant - they are *not independent*:
+the value of one constrains the others. So,
+**when updating one, you must update the others in the same atomic operation**.
+
+Using atomic references, we cannot update both *lastNumber* and *lastFactors* simultaneously, even though each call to
+set is atomic; there is still a window of vulnerability when one has been modified and the other has not, and
+during that time other threads could see that the invariant does not hold. Similarly, the two values cannot be fetched
+simultaneously: between the time when
+thread A fetches the two values, thread B could have changed them, and again A
+may observe that the invariant does not hold.
+
+**RULE:** `To preserve state consistency, update related state variables in a single
+atomic operation.`
+
+### 2.3.1 Intrinsic locks
+
+---
+
+```
+synchronized (lock) {
+    // Access or modify shared state guarded by lock
+}
+```
+
+Intrinsic locks in Java act as mutexes (or mutual exclusion locks), which means
+that at most one thread may own the lock.
+
+Since only one thread at a time can execute a block of code guarded by a given
+lock, the synchronized blocks guarded by the same lock execute atomically with
+respect to one another. No thread executing a synchronized can observe
+another thread to be in the middle of a synchronized block guarded by the same lock.
+
+Do not do this:
+
+```java
+
+@ThreadSafe
+public class SynchronizedFactorizer implements Servlet {
+    @GuardedBy("this")
+    private BigInteger lastNumber;
+    @GuardedBy("this")
+    private BigInteger[] lastFactors;
+
+    public synchronized void service(ServletRequest req,
+                                     ServletResponse resp) {
+        BigInteger i = extractFromRequest(req);
+        if (i.equals(lastNumber))
+            encodeIntoResponse(resp, lastFactors);
+        else {
+            BigInteger[] factors = factor(i);
+            lastNumber = i;
+            lastFactors = factors;
+            encodeIntoResponse(resp, factors);
+        }
+    }
+}
+```
+
+### 2.3.2 Reentrancy
+
+---
+
+When a thread requests a lock that is already held by another thread, the requesting thread blocks. But because
+intrinsic locks are reentrant, if a thread tries
+to acquire a lock that it already holds, the request succeeds. Reentrancy means
+that locks are acquired on a per-thread rather than per-invocation basis.
+
+`This differs from the default locking behavior for pthreads (POSIX threads) mutexes, which are
+granted on a per-invocation basis.
+
+Lock is associated with (acquisition count, owning thread).
+
+(0, null) ---thread A acquires---> (1, A) ---thread A acquires---> (2, A)
+-..-> (1, A) --> (0, null)
+
+Reentrancy facilitates encapsulation of locking behavior, and thus simplifies
+the development of object-oriented concurrent code:
+
+```java
+public class Widget {
+    public synchronized void doSomething() {
+        // ...
+    }
+}
+
+public class LoggingWidget extends Widget {
+    public synchronized void doSomething() {
+        System.out.println(toString() + ": calling doSomething");
+        super.doSomething();
+    }
+}
+```
+
+Code above would deadlock if intrinsic locks were not reentrant.
+
+## 2.4 Guarding state with locks
+
+---
+
